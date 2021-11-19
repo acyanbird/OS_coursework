@@ -3,9 +3,44 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pcap.h>
-#include <netinet/if_ether.h>
+//#include <netinet/if_ether.h>
+//#include <netinet/tcp.h>
+//#include <netinet/ip.h>
+#include <linux/if_ether.h>
+//#include "ethernet.h"
 
+//#include "ipstruct.h"
 #include "dispatch.h"
+
+
+struct ether_header
+{
+    u_int8_t  ether_dhost[ETH_ALEN];        /* destination eth addr        */
+    u_int8_t  ether_shost[ETH_ALEN];        /* source ether addr        */
+    u_int16_t ether_type;                        /* packet type ID field        */
+};
+
+struct ip {
+#if BYTE_ORDER == LITTLE_ENDIAN
+    u_char	ip_hl:4,		/* header length */
+    ip_v:4;			/* version */
+#endif
+#if BYTE_ORDER == BIG_ENDIAN
+    u_char	ip_v:4,			/* version */
+    ip_hl:4;		/* header length */
+#endif
+    u_char	ip_tos;			/* type of service */
+    short	ip_len;			/* total length */
+    u_short	ip_id;			/* identification */
+    short	ip_off;			/* fragment offset field */
+#define	IP_DF 0x4000			/* dont fragment flag */
+#define	IP_MF 0x2000			/* more fragments flag */
+    u_char	ip_ttl;			/* time to live */
+    u_char	ip_p;			/* protocol */
+    u_short	ip_sum;			/* checksum */
+    struct	in_addr ip_src,ip_dst;	/* source and dest address */
+};
+
 
 
 // Application main sniffing loop
@@ -55,9 +90,14 @@ void dump(const unsigned char *data, int length) {
   unsigned int i;
   static unsigned long pcount = 0;
   // Decode Packet Header
-  struct ether_header *eth_header = (struct ether_header *) data;
+  struct ether_header * eth_header = (struct ether_header *) data;
+  struct iphd * header = (struct ip *) data ;
+  header->
+
+  //struct ether_header *eth_header = (struct ether_header *) data;
   printf("\n\n === PACKET %ld HEADER ===", pcount);
   printf("\nSource MAC: ");
+
   for (i = 0; i < 6; ++i) {
     printf("%02x", eth_header->ether_shost[i]);
     if (i < 5) {
