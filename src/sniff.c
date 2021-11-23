@@ -3,49 +3,68 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pcap.h>
-//#include <netinet/if_ether.h>
-//#include <netinet/tcp.h>
-//#include <netinet/ip.h>
+#include <linux/tcp.h>
+#include <linux/ip.h>
 #include <linux/if_ether.h>
+#include <signal.h>
+#include <string.h>
 //#include "ethernet.h"
 
 //#include "ipstruct.h"
 #include "dispatch.h"
 
+int syn = 0;
+extern unsigned int *data;
+extern int dataSize;
+extern int arp;
 
-struct ether_header
-{
-    u_int8_t  ether_dhost[ETH_ALEN];        /* destination eth addr        */
-    u_int8_t  ether_shost[ETH_ALEN];        /* source ether addr        */
-    u_int16_t ether_type;                        /* packet type ID field        */
-};
-
-struct ip {
-#if BYTE_ORDER == LITTLE_ENDIAN
-    u_char	ip_hl:4,		/* header length */
-    ip_v:4;			/* version */
-#endif
-#if BYTE_ORDER == BIG_ENDIAN
-    u_char	ip_v:4,			/* version */
-    ip_hl:4;		/* header length */
-#endif
-    u_char	ip_tos;			/* type of service */
-    short	ip_len;			/* total length */
-    u_short	ip_id;			/* identification */
-    short	ip_off;			/* fragment offset field */
-#define	IP_DF 0x4000			/* dont fragment flag */
-#define	IP_MF 0x2000			/* more fragments flag */
-    u_char	ip_ttl;			/* time to live */
-    u_char	ip_p;			/* protocol */
-    u_short	ip_sum;			/* checksum */
-    struct	in_addr ip_src,ip_dst;	/* source and dest address */
-};
-
+int uniqueIP(unsigned int *data, int tol){
+    int unique = 0;
+    int judge[tol];
+    unsigned int curr;   // current num
+    memset(judge, 0, sizeof(judge));    // set judge all to 0
+    for(int i = 0;i < tol;i++){
+        // traverse all the element
+        if(i == (tol - 1) && !judge[i]){    // if final element not appear before
+            unique++;
+        }
+        else if(!judge[i]){  // if this element is not seen before
+            curr = *(data + i);
+            for(int j = i + 1;j < tol;j++){ // go from next
+                if(curr == *(data + j)){    // if there is same num after
+                    judge[j] = 1;
+                }
+            }
+            unique++;
+        }
+    }   // finish travers
+    return unique;
+}
 
 
 // Application main sniffing loop
+void sigHandle(){
+//    printf("catch ctrl c. packet total %d.\n", packNum);
+    printf("Intrusion Detection Report:\n");
+    printf("%d SYN packets detected from %d different IPs (syn attack)\n", syn, uniqueIP(data, syn));
+    printf("%d ARP responses (cache poisoning)\n", arp);
+    exit(1);
+}
+
+void print_ip(unsigned int ip)
+{
+    unsigned char bytes[4];
+    bytes[0] = ip & 0xFF;
+    bytes[1] = (ip >> 8) & 0xFF;
+    bytes[2] = (ip >> 16) & 0xFF;
+    bytes[3] = (ip >> 24) & 0xFF;
+    printf("%d.%d.%d.%d\n", bytes[3], bytes[2], bytes[1], bytes[0]);
+}
+
 void sniff(char *interface, int verbose) {
-  
+
+    // init the array for syn ip
+    data = (unsigned int *) calloc(dataSize, sizeof (unsigned int ));
   char errbuf[PCAP_ERRBUF_SIZE];
 
   // Open the specified network interface for packet capture. pcap_open_live() returns the handle to be used for the packet
@@ -66,7 +85,9 @@ void sniff(char *interface, int verbose) {
   // A more efficient way to capture packets is to use use pcap_loop() instead of pcap_next().
   // See the man pages of both pcap_loop() and pcap_next().
 
-  while (1) {
+    signal(SIGINT,sigHandle);   // to handle when user press ctrl + c
+
+    while (1) {
     // Capture a  packet
     packet = pcap_next(pcap_handle, &header);
     if (packet == NULL) {
@@ -83,38 +104,61 @@ void sniff(char *interface, int verbose) {
       dispatch(&header, packet, verbose);
     }
   }
+
+
 }
 
 // Utility/Debugging method for dumping raw packet data
 void dump(const unsigned char *data, int length) {
+
+
   unsigned int i;
   static unsigned long pcount = 0;
   // Decode Packet Header
-  struct ether_header * eth_header = (struct ether_header *) data;
-  struct iphd * header = (struct ip *) data ;
-  header->
+  struct ethhdr * eth_header = (struct ethhdr *) data;
 
   //struct ether_header *eth_header = (struct ether_header *) data;
   printf("\n\n === PACKET %ld HEADER ===", pcount);
   printf("\nSource MAC: ");
 
   for (i = 0; i < 6; ++i) {
-    printf("%02x", eth_header->ether_shost[i]);
+    printf("%02x", eth_header->h_source[i]);
     if (i < 5) {
       printf(":");
     }
   }
   printf("\nDestination MAC: ");
   for (i = 0; i < 6; ++i) {
-    printf("%02x", eth_header->ether_dhost[i]);
+    printf("%02x", eth_header->h_dest[i]);
     if (i < 5) {
       printf(":");
     }
   }
-  printf("\nType: %hu\n", eth_header->ether_type);
-  printf(" === PACKET %ld DATA == \n", pcount);
+  printf("\nType: %hu\n", eth_header->h_proto);
+  // try tcp and ip
+  // data is unsigned char, so directly use add number, eth -> ip -> tcp, +14 +20
+    struct iphdr *ip_head = (struct iphdr *)(data + sizeof(struct ethhdr));
+    struct tcphdr *tcp_head = (struct tcphdr *) (data + sizeof (struct ethhdr) + sizeof (struct iphdr));
+
+    char source[16];
+
+    snprintf(source, 16, "%pI4", &ip_head->saddr);
+
+    printf("send ip addr is ");
+    print_ip(ntohl(ip_head->saddr));
+    printf("\n");
+    printf("Dest ip addr is ");  // using ntohs convert it to short
+    print_ip(ntohl(ip_head->daddr));
+    printf("\n");
+
+    printf("Source port is %d\n", ntohs(tcp_head->source));
+    printf("Dest port is %d\n", ntohs(tcp_head->dest));
+    printf("eth proto is %d", htons(eth_header->h_proto));
+
+
+    printf(" === PACKET %ld DATA == \n", pcount);
   // Decode Packet Data (Skipping over the header)
-  int data_bytes = length - ETH_HLEN;
+  int data_bytes = length - ETH_HLEN;   // ETH_HLEN 14,
   const unsigned char *payload = data + ETH_HLEN;
   const static int output_sz = 20; // Output this many bytes at a time
   while (data_bytes > 0) {
