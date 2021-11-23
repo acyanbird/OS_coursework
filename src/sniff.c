@@ -1,22 +1,14 @@
-#include "sniff.h"
-
+#include "dispatch.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <pcap.h>
-#include <linux/tcp.h>
-#include <linux/ip.h>
-#include <linux/if_ether.h>
+#include "common.h"
 #include <signal.h>
-#include <string.h>
-//#include "ethernet.h"
-
-//#include "ipstruct.h"
-#include "dispatch.h"
 
 int syn = 0;
 extern unsigned int *data;
 extern int dataSize;
 extern int arp;
+extern int blackURL;
 
 int uniqueIP(unsigned int *data, int tol){
     int unique = 0;
@@ -48,6 +40,7 @@ void sigHandle(){
     printf("Intrusion Detection Report:\n");
     printf("%d SYN packets detected from %d different IPs (syn attack)\n", syn, uniqueIP(data, syn));
     printf("%d ARP responses (cache poisoning)\n", arp);
+    printf("%d URL Blacklist violations\n", blackURL);
     exit(1);
 }
 
@@ -58,7 +51,7 @@ void print_ip(unsigned int ip)
     bytes[1] = (ip >> 8) & 0xFF;
     bytes[2] = (ip >> 16) & 0xFF;
     bytes[3] = (ip >> 24) & 0xFF;
-    printf("%d.%d.%d.%d\n", bytes[3], bytes[2], bytes[1], bytes[0]);
+    printf("%d.%d.%d.%d", bytes[3], bytes[2], bytes[1], bytes[0]);
 }
 
 void sniff(char *interface, int verbose) {
@@ -78,8 +71,8 @@ void sniff(char *interface, int verbose) {
   }
   
   
-  struct pcap_pkthdr header;
-  const unsigned char *packet;
+//  struct pcap_pkthdr header;
+//  const unsigned char *packet;
 
   // Capture packet one packet everytime the loop runs using pcap_next(). This is inefficient.
   // A more efficient way to capture packets is to use use pcap_loop() instead of pcap_next().
@@ -87,23 +80,25 @@ void sniff(char *interface, int verbose) {
 
     signal(SIGINT,sigHandle);   // to handle when user press ctrl + c
 
-    while (1) {
-    // Capture a  packet
-    packet = pcap_next(pcap_handle, &header);
-    if (packet == NULL) {
-      // pcap_next can return null if no packet is seen within a timeout
-      if (verbose) {
-        printf("No packet received. %s\n", pcap_geterr(pcap_handle));
-      }
-    } else {
-      // If verbose is set to 1, dump raw packet to terminal
-      if (verbose) {
-        dump(packet, header.len);
-      }
-      // Dispatch packet for processing
-      dispatch(&header, packet, verbose);
-    }
-  }
+//    while (1) {
+//    // Capture a  packet
+//    packet = pcap_next(pcap_handle, &header);
+//    if (packet == NULL) {
+//      // pcap_next can return null if no packet is seen within a timeout
+//      if (verbose) {
+//        printf("No packet received. %s\n", pcap_geterr(pcap_handle));
+//      }
+//    } else {
+//      // If verbose is set to 1, dump raw packet to terminal
+//      if (verbose) {
+//        dump(packet, header.len);
+//      }
+//      // Dispatch packet for processing
+//      dispatch(&header, packet, verbose);
+//    }
+//  }
+
+  pcap_loop(pcap_handle, -1, dispatch, verbose);
 
 
 }
@@ -137,12 +132,9 @@ void dump(const unsigned char *data, int length) {
   printf("\nType: %hu\n", eth_header->h_proto);
   // try tcp and ip
   // data is unsigned char, so directly use add number, eth -> ip -> tcp, +14 +20
+
     struct iphdr *ip_head = (struct iphdr *)(data + sizeof(struct ethhdr));
     struct tcphdr *tcp_head = (struct tcphdr *) (data + sizeof (struct ethhdr) + sizeof (struct iphdr));
-
-    char source[16];
-
-    snprintf(source, 16, "%pI4", &ip_head->saddr);
 
     printf("send ip addr is ");
     print_ip(ntohl(ip_head->saddr));
@@ -154,6 +146,7 @@ void dump(const unsigned char *data, int length) {
     printf("Source port is %d\n", ntohs(tcp_head->source));
     printf("Dest port is %d\n", ntohs(tcp_head->dest));
     printf("eth proto is %d", htons(eth_header->h_proto));
+
 
 
     printf(" === PACKET %ld DATA == \n", pcount);

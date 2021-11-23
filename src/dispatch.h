@@ -3,8 +3,7 @@
 
 #include <pcap.h>
 
-void dispatch(struct pcap_pkthdr *header, 
-              const unsigned char *packet,
-              int verbose);
+void dispatch(unsigned char *userdata, struct pcap_pkthdr *header,
+              const unsigned char *packet);
 
 #endif
