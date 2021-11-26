@@ -70,35 +70,30 @@ void *analyse(void *arg) {
             pthread_mutex_unlock(&arpm);
         } else if (ntohs(tcp_head->dest) == 80) {
             char *hdata = (char *) tcp_head + 20;
-            // len of min tcp header
-            int hdatalen = header->len - ETH_HLEN - ip_head->ihl * 4 - 20; // min tcp head is 20
-            if (hdatalen) {
-                while (hdata != NULL) {
-                    char *next = strstr(hdata, "\r\n");
-                    char *current = hdata;
-                    char *exist1 = strstr(current, black1);
-                    char *exist2 = strstr(current, black2);
-                    if (exist1 || exist2) {
-                        pthread_mutex_lock(&blackm);
-                        printf("==============================\nBlacklisted URL violation detected\nSource IP address: ");
-                        print_ip(ip_head->saddr);
-                        printf("\nDestination IP address: ");
-                        print_ip(ip_head->daddr);
-                        printf("\n==============================\n");
-                        fflush(stdout);
-                        blackURL++;
-                        pthread_mutex_unlock(&blackm);
-                        break;
-                    }
-                    if(next == NULL){
-                        break;
-                    }
-                    int moveNext = strlen(next);
-                    moveNext += 2;  // skip \r\n
-                    hdata += moveNext;
+            while (hdata != NULL) {
+                char *next = strstr(hdata, "\r\n");
+                char *current = hdata;
+                char *exist1 = strstr(current, black1);
+                char *exist2 = strstr(current, black2);
+                if (exist1 || exist2) {
+                    pthread_mutex_lock(&blackm);
+                    printf("==============================\nBlacklisted URL violation detected\nSource IP address: ");
+                    print_ip(ip_head->saddr);
+                    printf("\nDestination IP address: ");
+                    print_ip(ip_head->daddr);
+                    printf("\n==============================\n");
+                    fflush(stdout);
+                    blackURL++;
+                    pthread_mutex_unlock(&blackm);
+                    break;
                 }
-
+                if(next == NULL){
+                    break;
                 }
+                int moveNext = strlen(next);
+                moveNext += 2;  // skip \r\n
+                hdata += moveNext;
+            }
             }
         }
     }
