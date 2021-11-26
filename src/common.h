@@ -9,4 +9,6 @@
 #include <linux/tcp.h>
 #include <malloc.h>
 #include <string.h>
+#include <pthread.h>
+#include "jobqueue.h"
 #endif //SRC_COMMON_H
